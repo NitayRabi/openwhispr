@@ -6,6 +6,18 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
+function isSafeImageSource(src: string | undefined): src is string {
+  if (!src) return false;
+  if (/^data:image\/(?:png|jpe?g|gif|webp|avif);base64,/i.test(src)) return true;
+  try {
+    const baseUrl = typeof window === "undefined" ? "https://localhost/" : window.location.href;
+    const url = new URL(src, baseUrl);
+    return url.protocol === "https:" || url.protocol === "http:" || url.protocol === "blob:";
+  } catch {
+    return false;
+  }
+}
+
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
     <div className={cn("prose prose-sm max-w-none", className)}>
@@ -34,6 +46,17 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               {children}
             </a>
           ),
+          img: ({ src, alt }) =>
+            isSafeImageSource(src) ? (
+              <img
+                src={src}
+                alt={alt || ""}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                className="my-2 max-h-[min(28rem,60vh)] max-w-full rounded-lg border border-border/40 object-contain"
+              />
+            ) : null,
           code: ({ children }) => (
             <code className="bg-black/10 px-1 py-0.5 rounded text-xs font-mono">{children}</code>
           ),
