@@ -362,6 +362,36 @@ test("a populated Assistant keeps typed input without empty-state suggestions", 
   assert.doesNotMatch(markup, /Summarize my recent notes/);
 });
 
+test("a populated Assistant renders the full transcript and durable tool activity", async (t) => {
+  const markup = await renderAssistantPanel(t, [
+    { id: "user-1", role: "user", content: "First question", isStreaming: false },
+    {
+      id: "assistant-1",
+      role: "assistant",
+      content: "First answer",
+      isStreaming: false,
+      toolCalls: [
+        {
+          id: "tool-1",
+          name: "search_notes",
+          arguments: "{}",
+          status: "completed",
+          result: "Found prior notes",
+        },
+      ],
+    },
+    { id: "user-2", role: "user", content: "Follow-up question", isStreaming: false },
+    { id: "assistant-2", role: "assistant", content: "Latest answer", isStreaming: true },
+  ]);
+
+  assert.match(markup, /First question/);
+  assert.match(markup, /First answer/);
+  assert.match(markup, /Found prior notes/);
+  assert.match(markup, /Follow-up question/);
+  assert.match(markup, /Latest answer/);
+  assert.match(markup, /data-message-id="assistant-1"/);
+});
+
 test("starting a new conversation clears the displayed response and parent content ownership", async (t) => {
   let root = null;
   t.after(async () => {
@@ -786,13 +816,23 @@ test("a follow-up into an open panel strips caret delivery and stays panel-first
 
   assistant.openRef.current = true;
   await React.act(async () => {
-    assistant.handleCommand({ text: "draft a reply", attachment: null, selectedContext: null, delivery });
+    assistant.handleCommand({
+      text: "draft a reply",
+      attachment: null,
+      selectedContext: null,
+      delivery,
+    });
   });
   assert.equal(assistant.pendingCommand.delivery, null);
 
   assistant.openRef.current = false;
   await React.act(async () => {
-    assistant.handleCommand({ text: "draft a reply", attachment: null, selectedContext: null, delivery });
+    assistant.handleCommand({
+      text: "draft a reply",
+      attachment: null,
+      selectedContext: null,
+      delivery,
+    });
   });
   assert.deepEqual(assistant.pendingCommand.delivery, delivery);
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Copy,
@@ -16,6 +16,7 @@ import { extractNoteCards } from "./noteCards";
 import { toolIcons } from "./toolIcons";
 
 interface ChatMessageProps {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   isStreaming: boolean;
@@ -165,7 +166,8 @@ function NoteCard({
   );
 }
 
-export function ChatMessage({
+export const ChatMessage = memo(function ChatMessage({
+  id,
   role,
   content,
   isStreaming,
@@ -188,6 +190,8 @@ export function ChatMessage({
   if (role === "user") {
     return (
       <div
+        data-message-id={id}
+        data-message-role="user"
         className="flex justify-end"
         style={{ animation: "agent-message-in 200ms ease-out both" }}
       >
@@ -211,6 +215,8 @@ export function ChatMessage({
 
   return (
     <div
+      data-message-id={id}
+      data-message-role="assistant"
       className="group/msg flex justify-start"
       style={{ animation: "agent-message-in 200ms ease-out both" }}
     >
@@ -285,4 +291,4 @@ export function ChatMessage({
       </div>
     </div>
   );
-}
+});

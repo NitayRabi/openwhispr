@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, Plus, X } from "lucide-react";
 import { BrandMarkIcon } from "./BrandMarkIcon";
-import { MarkdownRenderer } from "../ui/MarkdownRenderer";
+import { ChatMessages } from "../chat/ChatMessages";
 import { Button } from "../ui/button";
 import { useChatPersistence } from "../chat/useChatPersistence";
 import { useChatStreaming } from "../chat/useChatStreaming";
@@ -75,12 +75,6 @@ interface AssistantPanelProps {
   onConversationReset: () => void;
   onSelectionContextChange: (context: AgentSelectionContext | null) => void;
 }
-
-// Updating the selection indicator must not rerender react-markdown: its
-// component map is recreated on render, which remounts the text nodes and
-// collapses the browser's live selection. Streaming content still rerenders
-// normally because the content prop changes.
-const StableAssistantMarkdown = memo(MarkdownRenderer);
 
 export function AssistantPanel({
   pendingCommand,
@@ -276,9 +270,6 @@ export function AssistantPanel({
     return () => onBusyChange(false);
   }, [isBusy, onBusyChange]);
 
-  const displayedResponseRef = useRef("");
-  if (responseContent) displayedResponseRef.current = responseContent;
-  const displayedResponse = responseContent || displayedResponseRef.current;
   // Keep the previous response ineligible throughout a follow-up request. Audio
   // processing can return voiceState to idle one render before the chat stream
   // reports busy; without this latch, the old response briefly restores the
@@ -304,7 +295,6 @@ export function AssistantPanel({
     persistence.handleNewChat();
     onConversationIdChange(null);
     clearSelectedContext();
-    displayedResponseRef.current = "";
     onConversationReset();
   }, [
     clearSelectedContext,
@@ -348,9 +338,21 @@ export function AssistantPanel({
       const range = selection.getRangeAt(0);
       if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
 
+      const startMessage =
+        range.startContainer.parentElement?.closest<HTMLElement>("[data-message-id]") ?? null;
+      const endMessage =
+        range.endContainer.parentElement?.closest<HTMLElement>("[data-message-id]") ?? null;
+      if (
+        !startMessage ||
+        startMessage !== endMessage ||
+        startMessage.dataset.messageRole !== "assistant"
+      ) {
+        return;
+      }
+
       const context = normalizeAgentSelectionContext({
         text: selection.toString(),
-        sourceMessageId: latestAssistantMessage.id,
+        sourceMessageId: startMessage.dataset.messageId,
       });
       if (!context) return;
 
@@ -470,44 +472,33 @@ export function AssistantPanel({
       <div className="relative mx-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/40 bg-surface-1 shadow-inner">
         <main
           data-panel-scroll-region
-          className="agent-chat-scroll min-h-0 flex-1 overflow-y-auto px-5 py-4"
+          className="contents"
           aria-busy={!historyReady || thinking || isBusy}
         >
-          <div
-            data-panel-size-source
-            className={`assistant-response-content min-h-full ${
+          <ChatMessages
+            messages={messages}
+            contentRef={responseSelectionRootRef}
+            sizeSource
+            className={`min-h-0 px-5 py-4 ${
               showContentFlourish ? "assistant-response-content-updating" : ""
             }`}
-          >
-            {displayedResponse ? (
-              <div
-                ref={responseSelectionRootRef}
-                style={{ animation: "agent-message-in 160ms ease-out both" }}
-              >
-                <StableAssistantMarkdown
-                  content={displayedResponse}
-                  className="text-[15px] leading-relaxed text-foreground selection:bg-agent-brand/35 selection:text-foreground [&_p]:text-[15px] [&_li]:text-[15px]"
-                />
-                {latestAssistantMessage?.isStreaming && (
-                  <span
-                    className="ml-0.5 inline-block h-4 w-0.5 align-middle bg-foreground/70"
-                    style={{ animation: "agent-cursor-blink 1s ease-in-out infinite" }}
+            contentClassName="min-h-full selection:bg-agent-brand/35 selection:text-foreground"
+            emptyState={
+              <>
+                {thinking && (
+                  <div role="status">
+                    <span className="sr-only">{t("agentMode.input.thinking")}</span>
+                  </div>
+                )}
+                {showEmptyState && (
+                  <AssistantEmptyState
+                    disabled={isBusy || submissionInFlight}
+                    onSelectSuggestion={handleTextSubmit}
                   />
                 )}
-              </div>
-            ) : null}
-            {thinking && (
-              <div role="status">
-                <span className="sr-only">{t("agentMode.input.thinking")}</span>
-              </div>
-            )}
-            {showEmptyState && (
-              <AssistantEmptyState
-                disabled={isBusy || submissionInFlight}
-                onSelectSuggestion={handleTextSubmit}
-              />
-            )}
-          </div>
+              </>
+            }
+          />
         </main>
 
         <ChatInput

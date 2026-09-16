@@ -76,7 +76,10 @@ export function useChatMessageSender({
             text,
             isFirstMessage: previousMessages.length === 0,
           });
-          await streaming.sendToAI(text, [...previousMessages, userMessage], options);
+          await streaming.sendToAI(text, [...previousMessages, userMessage], {
+            ...options,
+            remoteConversationId: convId,
+          });
         } finally {
           onSendingChange?.(false);
         }

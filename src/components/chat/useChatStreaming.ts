@@ -25,6 +25,7 @@ import {
   buildAgentRequestText,
   type AgentSelectionContext,
 } from "../../utils/agentSelectionContext";
+import { streamRemoteAgent } from "../../services/remoteAgentStream";
 
 const RAG_NOTE_LIMIT = 5;
 const RAG_NOTE_SNIPPET_LENGTH = 500;
@@ -87,6 +88,8 @@ export interface SendToAIOptions {
     content: string;
     toolCalls?: ToolCallInfo[];
   }) => void | Promise<void>;
+  /** Local persisted conversation id, used as a stable remote-agent session key. */
+  remoteConversationId?: number;
 }
 
 export interface ChatStreaming {
@@ -144,6 +147,7 @@ export function useChatStreaming({
   const toolRegistryRef = useRef<{ key: string; registry: ToolRegistry } | null>(null);
   const toolActivityStartedAtRef = useRef<number | null>(null);
   const toolActivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remoteAbortControllerRef = useRef<AbortController | null>(null);
 
   const clearToolActivityTimer = useCallback(() => {
     if (toolActivityTimerRef.current) {
@@ -203,6 +207,8 @@ export function useChatStreaming({
       explicitCancelGenerationRef.current = sendGenerationRef.current;
     }
     ReasoningService.cancelActiveStream();
+    remoteAbortControllerRef.current?.abort();
+    remoteAbortControllerRef.current = null;
     setAgentState("idle");
     clearToolActivity();
   }, [clearToolActivity]);
@@ -419,6 +425,17 @@ export function useChatStreaming({
             executeToolCall,
             ...(cloudScreenContext ? { screenContext: cloudScreenContext } : {}),
           });
+        } else if (isLanAgent) {
+          const remoteAbortController = new AbortController();
+          remoteAbortControllerRef.current = remoteAbortController;
+          stream = streamRemoteAgent({
+            baseUrl: chatConfig.remoteUrl,
+            model: chatConfig.model || "openclaw/default",
+            messages: llmMessages,
+            sessionId: `openwhispr:${options?.remoteConversationId ?? "default"}`,
+            apiKey: chatConfig.customApiKey || undefined,
+            signal: remoteAbortController.signal,
+          });
         } else {
           const aiTools = registry?.toAISDKFormat();
           stream = ReasoningService.processTextStreamingAI(
@@ -568,6 +585,8 @@ export function useChatStreaming({
           );
         }
       }
+
+      remoteAbortControllerRef.current = null;
 
       setAgentState("idle");
       completeToolActivity();
